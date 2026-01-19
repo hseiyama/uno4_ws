@@ -1,10 +1,75 @@
 #include <Arduino.h>
 
+/*
+ * SCI1 UART 初期化
+ * 9600bps / 8bit / No parity / 1stop
+ */
+void sci1_init(void)
+{
+	/* ---- SCI1 モジュールストップ解除 ---- */
+	R_MSTP->MSTPCRB_b.MSTPB30 = 0;					// SCI1 ON
+
+	/* ---- ポート設定 ---- */
+	// 書き込みプロテクト解除
+	R_PMISC->PWPR_b.B0WI = 0;
+	R_PMISC->PWPR_b.PFSWE = 1;
+	// P501 = TXD1, P502 = RXD1
+	R_PFS->PORT[5].PIN[1].PmnPFS_b.PSEL = 0b00101;	// SCI1 TX
+	R_PFS->PORT[5].PIN[2].PmnPFS_b.PSEL = 0b00101;	// SCI1 RX
+	R_PFS->PORT[5].PIN[1].PmnPFS_b.PMR = 1;
+	R_PFS->PORT[5].PIN[2].PmnPFS_b.PMR = 1;
+	// 書き込みプロテクト施錠
+	R_PMISC->PWPR_b.PFSWE = 0;
+	R_PMISC->PWPR_b.B0WI = 1;
+
+	/* ---- SCI 停止 ---- */
+	R_SCI1->SCR = 0x00;
+
+	/* ---- 通信条件設定 ---- */
+	R_SCI1->SMR = 0x00;								// 8bit, no parity, 1 stop
+	R_SCI1->SCMR = 0xF2;							// 通常モード
+
+	/* ---- ボーレート設定 ---- */
+	// PCLKB = 48MHz
+	// 9600bps → BRR = 311
+	R_SCI1->BRR = 311;
+
+	delayMicroseconds(100);
+
+	/* ---- 送受信有効 ---- */
+	R_SCI1->SCR = 0x30;								// TE=1, RE=1
+}
+
+/* 1文字送信 */
+void sci1_putc(char c)
+{
+	while (!R_SCI1->SSR_b.TDRE);
+	R_SCI1->TDR = c;
+}
+
+/* 文字列送信 */
+void sci1_puts(const char *s)
+{
+	while (*s) {
+	    sci1_putc(*s++);
+	}
+}
+
+/* 1文字受信（ブロッキング） */
+char sci1_getc(void)
+{
+	while (!R_SCI1->SSR_b.RDRF);
+	return R_SCI1->RDR;
+}
+
 void setup() {
 	// 各ポートの方向設定
 	R_PORT1->PDR_b.PDR11 = 1;		// SCK LED(P111): 出力
 	R_PORT0->PDR_b.PDR12 = 1;		// TX LED(P012): 出力
 	R_PORT0->PDR_b.PDR13 = 1;		// RX LED(P013): 出力
+
+	// SCI1 UART 初期化
+	sci1_init();
 }
 
 void loop() {
@@ -29,4 +94,7 @@ void loop() {
 	R_PORT0->POSR_b.POSR12 = 1;
 	R_PORT0->PORR_b.PORR13 = 1;
 	delay(1000);
+
+	// 1文字送信
+	sci1_putc('U');
 }
