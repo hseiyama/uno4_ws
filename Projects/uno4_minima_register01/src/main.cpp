@@ -8,36 +8,49 @@ void sci1_init(void)
 {
 	/* ---- SCI1 モジュールストップ解除 ---- */
 	R_MSTP->MSTPCRB_b.MSTPB30 = 0;					// SCI1 ON
+//	R_MSTP->MSTPCRB_b.MSTPB29 = 0;					// SCI2 ON
+
+	/* ---- SCI 停止 ---- */
+	R_SCI1->SCR = 0x00;
+//	R_SCI2->SCR = 0x00;
+
+	/* ---- 通信条件設定 ---- */
+	R_SCI1->SMR = 0x00;								// 8bit, no parity, 1 stop
+	R_SCI1->SCMR = 0xF2;							// 通常モード
+//	R_SCI2->SMR = 0x00;								// 8bit, no parity, 1 stop
+//	R_SCI2->SCMR = 0xF2;							// 通常モード
+
+	/* ---- ボーレート設定 ---- */
+	// PCLKA = 48MHz
+	// BBR = 48MHz / (64 * 2^(-1) * 9600bps) - 1 = 155.25
+	// 前提条件1[SMR.CKS=00b (n=0)]
+	// 前提条件2[SEMR.ABCS=0b, SEMR.ABCSE=0b, SEMR.BGDM=0b]
+	// 9600bps → BRR = 155
+	R_SCI1->BRR = 155;
+//	R_SCI2->BRR = 155;
 
 	/* ---- ポート設定 ---- */
 	// 書き込みプロテクト解除
-	R_PMISC->PWPR_b.B0WI = 0;
-	R_PMISC->PWPR_b.PFSWE = 1;
+//	R_PMISC->PWPR_b.B0WI = 0;
+//	R_PMISC->PWPR_b.PFSWE = 1;
+	R_BSP_PinAccessEnable();
 	// P501 = TXD1, P502 = RXD1
 	R_PFS->PORT[5].PIN[1].PmnPFS_b.PSEL = 0b00101;	// SCI1 TX
 	R_PFS->PORT[5].PIN[2].PmnPFS_b.PSEL = 0b00101;	// SCI1 RX
 	R_PFS->PORT[5].PIN[1].PmnPFS_b.PMR = 1;
 	R_PFS->PORT[5].PIN[2].PmnPFS_b.PMR = 1;
+//	R_PFS->PORT[3].PIN[1].PmnPFS_b.PSEL = 0b00100;	// SCI2 RX
+//	R_PFS->PORT[3].PIN[2].PmnPFS_b.PSEL = 0b00100;	// SCI2 TX
+//	R_PFS->PORT[3].PIN[1].PmnPFS_b.PMR = 1;
+//	R_PFS->PORT[3].PIN[2].PmnPFS_b.PMR = 1;
 	// 書き込みプロテクト施錠
-	R_PMISC->PWPR_b.PFSWE = 0;
-	R_PMISC->PWPR_b.B0WI = 1;
-
-	/* ---- SCI 停止 ---- */
-	R_SCI1->SCR = 0x00;
-
-	/* ---- 通信条件設定 ---- */
-	R_SCI1->SMR = 0x00;								// 8bit, no parity, 1 stop
-	R_SCI1->SCMR = 0xF2;							// 通常モード
-
-	/* ---- ボーレート設定 ---- */
-	// PCLKB = 48MHz
-	// 9600bps → BRR = 311
-	R_SCI1->BRR = 311;
-
-	delayMicroseconds(100);
+//	R_PMISC->PWPR_b.PFSWE = 0;
+//	R_PMISC->PWPR_b.B0WI = 1;
+	R_BSP_PinAccessDisable();
 
 	/* ---- 送受信有効 ---- */
 	R_SCI1->SCR = 0x30;								// TE=1, RE=1
+//	R_SCI2->SCR = 0x30;								// TE=1, RE=1
 }
 
 /* 1文字送信 */
@@ -45,6 +58,8 @@ void sci1_putc(char c)
 {
 	while (!R_SCI1->SSR_b.TDRE);
 	R_SCI1->TDR = c;
+//	while (!R_SCI2->SSR_b.TDRE);
+//	R_SCI2->TDR = c;
 }
 
 /* 文字列送信 */
@@ -60,6 +75,8 @@ char sci1_getc(void)
 {
 	while (!R_SCI1->SSR_b.RDRF);
 	return R_SCI1->RDR;
+//	while (!R_SCI2->SSR_b.RDRF);
+//	return R_SCI2->RDR;
 }
 
 void setup() {
@@ -77,7 +94,10 @@ void loop() {
 	R_PORT1->PODR_b.PODR11 = 1;		// SCK LED(P111): High出力(点灯)
 	R_PORT0->PODR_b.PODR12 = 1;		// TX LED(P012): High出力(消灯)
 	R_PORT0->PODR_b.PODR13 = 1;		// RX LED(P013): High出力(消灯)
+	// 1文字送信
+	sci1_putc('1');
 	delay(1000);
+
 	// 各ポートの出力データ設定(2)
 //	R_PORT1->PODR_b.PODR11 = 0;		// SCK LED(P111): High出力(消灯)
 //	R_PORT0->PODR_b.PODR12 = 0;		// TX LED(P012): High出力(点灯)
@@ -85,7 +105,10 @@ void loop() {
 	R_PORT1->PORR = 0x0800;
 	R_PORT0->PORR = 0x1000;
 	R_PORT0->POSR = 0x2000;
+	// 1文字送信
+	sci1_putc('2');
 	delay(1000);
+
 	// 各ポートの出力データ設定(3)
 //	R_PORT1->PODR_b.PODR11 = 0;		// SCK LED(P111): High出力(消灯)
 //	R_PORT0->PODR_b.PODR12 = 1;		// TX LED(P012): High出力(消灯)
@@ -93,8 +116,10 @@ void loop() {
 	R_PORT1->PORR_b.PORR11 = 1;
 	R_PORT0->POSR_b.POSR12 = 1;
 	R_PORT0->PORR_b.PORR13 = 1;
+	// 1文字送信
+	sci1_putc('3');
 	delay(1000);
 
 	// 1文字送信
-	sci1_putc('U');
+	sci1_putc('.');
 }
