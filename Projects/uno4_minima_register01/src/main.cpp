@@ -8,26 +8,21 @@ void sci1_init(void)
 {
 	/* ---- SCI1 モジュールストップ解除 ---- */
 	R_MSTP->MSTPCRB_b.MSTPB30 = 0;					// SCI1 ON
-//	R_MSTP->MSTPCRB_b.MSTPB29 = 0;					// SCI2 ON
 
 	/* ---- SCI 停止 ---- */
 	R_SCI1->SCR = 0x00;
-//	R_SCI2->SCR = 0x00;
 
 	/* ---- 通信条件設定 ---- */
 	R_SCI1->SMR = 0x00;								// 8bit, no parity, 1 stop
 	R_SCI1->SCMR = 0xF2;							// 通常モード
-//	R_SCI2->SMR = 0x00;								// 8bit, no parity, 1 stop
-//	R_SCI2->SCMR = 0xF2;							// 通常モード
 
 	/* ---- ボーレート設定 ---- */
 	// PCLKA = 48MHz
 	// BBR = 48MHz / (64 * 2^(-1) * 9600bps) - 1 = 155.25
-	// 前提条件1[SMR.CKS=00b (n=0)]
-	// 前提条件2[SEMR.ABCS=0b, SEMR.ABCSE=0b, SEMR.BGDM=0b]
+	// 前提条件1 [SMR.CKS=00b (n=0)]
+	// 前提条件2 [SEMR.ABCS=0b, SEMR.ABCSE=0b, SEMR.BGDM=0b]
 	// 9600bps → BRR = 155
 	R_SCI1->BRR = 155;
-//	R_SCI2->BRR = 155;
 
 	/* ---- ポート設定 ---- */
 	// 書き込みプロテクト解除
@@ -39,10 +34,6 @@ void sci1_init(void)
 	R_PFS->PORT[5].PIN[2].PmnPFS_b.PSEL = 0b00101;	// SCI1 RX
 	R_PFS->PORT[5].PIN[1].PmnPFS_b.PMR = 1;
 	R_PFS->PORT[5].PIN[2].PmnPFS_b.PMR = 1;
-//	R_PFS->PORT[3].PIN[1].PmnPFS_b.PSEL = 0b00100;	// SCI2 RX
-//	R_PFS->PORT[3].PIN[2].PmnPFS_b.PSEL = 0b00100;	// SCI2 TX
-//	R_PFS->PORT[3].PIN[1].PmnPFS_b.PMR = 1;
-//	R_PFS->PORT[3].PIN[2].PmnPFS_b.PMR = 1;
 	// 書き込みプロテクト施錠
 //	R_PMISC->PWPR_b.PFSWE = 0;
 //	R_PMISC->PWPR_b.B0WI = 1;
@@ -50,7 +41,6 @@ void sci1_init(void)
 
 	/* ---- 送受信有効 ---- */
 	R_SCI1->SCR = 0x30;								// TE=1, RE=1
-//	R_SCI2->SCR = 0x30;								// TE=1, RE=1
 }
 
 /* 1文字送信 */
@@ -58,8 +48,6 @@ void sci1_putc(char c)
 {
 	while (!R_SCI1->SSR_b.TDRE);
 	R_SCI1->TDR = c;
-//	while (!R_SCI2->SSR_b.TDRE);
-//	R_SCI2->TDR = c;
 }
 
 /* 文字列送信 */
@@ -75,8 +63,6 @@ char sci1_getc(void)
 {
 	while (!R_SCI1->SSR_b.RDRF);
 	return R_SCI1->RDR;
-//	while (!R_SCI2->SSR_b.RDRF);
-//	return R_SCI2->RDR;
 }
 
 void setup() {
