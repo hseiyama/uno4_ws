@@ -1,6 +1,5 @@
 #include <Arduino.h>
 
-#define FIXED_IRQ_NUM		(16)					// Arm Cortex-M4 コア用の固定IRQ数
 /* IRQ番号の割り当て */
 // IRQManager との競合を避けるため、
 // 末尾(31)から割り当てるルールとする。
@@ -71,17 +70,8 @@ char sci1_getc(void)
 	return R_SCI1->RDR;
 }
 
-#if 0
-/* 外部割込み処理 */
-static void sw_push(void)
-{
-	// 1文字送信
-	sci1_putc('e');
-}
-#endif
-
-/* IRQ0 割り込みハンドラ */
-void IRQ0_Handler(void)
+/* PORT_IRQ0 割り込みハンドラ */
+void PORT_IRQ0_Handler(void)
 {
     /* 割り込み要求フラグ クリア */
 	R_ICU->IELSR_b[IRQ_PORT_IRQ0].IR = 0;
@@ -90,19 +80,19 @@ void IRQ0_Handler(void)
 	sci1_putc('e');
 }
 
-/* IRQ0 初期化 */
-void irq0_init(void)
+/* PORT_IRQ0 初期化 */
+void port_irq0_init(void)
 {
 	/* ---- ベクターテーブル登録 ---- */
 	volatile uint32_t *irq_ptr = (volatile uint32_t *)SCB->VTOR;
-	irq_ptr += FIXED_IRQ_NUM;
+	irq_ptr += BSP_CORTEX_VECTOR_TABLE_ENTRIES;
 	__disable_irq();
-	*(irq_ptr + IRQ_PORT_IRQ0) = (uint32_t)IRQ0_Handler;
+	*(irq_ptr + IRQ_PORT_IRQ0) = (uint32_t)PORT_IRQ0_Handler;
 	__enable_irq();
 
-	/* ---- IRQ0 無効 ---- */
+	/* ---- PORT_IRQ0 無効 ---- */
 	R_ICU->IELSR[IRQ_PORT_IRQ0] = 0x00000000;
-	R_ICU->IRQCR[IRQ_PORT_IRQ0] = 0x00;
+	R_ICU->IRQCR[0] = 0x00;
 
 	/* ---- ポート設定 ---- */
 	// 書き込みプロテクト解除
@@ -114,10 +104,10 @@ void irq0_init(void)
 	// 書き込みプロテクト施錠
 	R_BSP_PinAccessDisable();
 
-	/* ---- IRQ0 設定 ---- */
-	R_ICU->IRQCR_b[IRQ_PORT_IRQ0].IRQMD = 0;		// 立ち下がりエッジ
-	R_ICU->IRQCR_b[IRQ_PORT_IRQ0].FCLKSEL = 3;		// PCLKB/64
-	R_ICU->IRQCR_b[IRQ_PORT_IRQ0].FLTEN = 1;		// デジタルフィルタ有効
+	/* ---- PORT_IRQ0 設定 ---- */
+	R_ICU->IRQCR_b[0].IRQMD = 0;					// 立ち下がりエッジ
+	R_ICU->IRQCR_b[0].FCLKSEL = 3;					// PCLKB/64
+	R_ICU->IRQCR_b[0].FLTEN = 1;					// デジタルフィルタ有効
 
 	/* ---- ICU → NVIC 割り込み割り当て ---- */
 	R_ICU->IELSR_b[IRQ_PORT_IRQ0].IR = 0;			// 割り込み要求フラグ クリア
@@ -125,41 +115,36 @@ void irq0_init(void)
 
 	/* ---- NVIC 設定 ---- */
 	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_PORT_IRQ0);
-	NVIC_SetPriority((IRQn_Type)IRQ_PORT_IRQ0, 12);
+	NVIC_SetPriority((IRQn_Type)IRQ_PORT_IRQ0, 12);	// 優先度 12
 	NVIC_EnableIRQ((IRQn_Type)IRQ_PORT_IRQ0);
 }
 
 void setup() {
 	// 各ポートの方向設定
-	R_PORT1->PDR_b.PDR11 = 1;		// SCK LED(P111): 出力
-	R_PORT0->PDR_b.PDR12 = 1;		// TX LED(P012): 出力
-	R_PORT0->PDR_b.PDR13 = 1;		// RX LED(P013): 出力
+	R_PORT1->PDR_b.PDR11 = 1;						// SCK LED(P111): 出力
+	R_PORT0->PDR_b.PDR12 = 1;						// TX LED(P012): 出力
+	R_PORT0->PDR_b.PDR13 = 1;						// RX LED(P013): 出力
 
 	// SCI1 UART 初期化
 	sci1_init();
 
-#if 0
-	// 外部割込みの準備
-	pinMode(2, INPUT_PULLUP);
-	attachInterrupt(2, sw_push, FALLING);
-#endif
-	// IRQ0 初期化
-	irq0_init();
+	// PORT_IRQ0 初期化
+	port_irq0_init();
 }
 
 void loop() {
 	// 各ポートの出力データ設定(1)
-	R_PORT1->PODR_b.PODR11 = 1;		// SCK LED(P111): High出力(点灯)
-	R_PORT0->PODR_b.PODR12 = 1;		// TX LED(P012): High出力(消灯)
-	R_PORT0->PODR_b.PODR13 = 1;		// RX LED(P013): High出力(消灯)
+	R_PORT1->PODR_b.PODR11 = 1;						// SCK LED(P111): High出力(点灯)
+	R_PORT0->PODR_b.PODR12 = 1;						// TX LED(P012): High出力(消灯)
+	R_PORT0->PODR_b.PODR13 = 1;						// RX LED(P013): High出力(消灯)
 	// 1文字送信
 	sci1_putc('1');
 	delay(1000);
 
 	// 各ポートの出力データ設定(2)
-//	R_PORT1->PODR_b.PODR11 = 0;		// SCK LED(P111): High出力(消灯)
-//	R_PORT0->PODR_b.PODR12 = 0;		// TX LED(P012): High出力(点灯)
-//	R_PORT0->PODR_b.PODR13 = 1;		// RX LED(P013): High出力(消灯)
+//	R_PORT1->PODR_b.PODR11 = 0;						// SCK LED(P111): High出力(消灯)
+//	R_PORT0->PODR_b.PODR12 = 0;						// TX LED(P012): High出力(点灯)
+//	R_PORT0->PODR_b.PODR13 = 1;						// RX LED(P013): High出力(消灯)
 	R_PORT1->PORR = 0x0800;
 	R_PORT0->PORR = 0x1000;
 	R_PORT0->POSR = 0x2000;
@@ -168,9 +153,9 @@ void loop() {
 	delay(1000);
 
 	// 各ポートの出力データ設定(3)
-//	R_PORT1->PODR_b.PODR11 = 0;		// SCK LED(P111): High出力(消灯)
-//	R_PORT0->PODR_b.PODR12 = 1;		// TX LED(P012): High出力(消灯)
-//	R_PORT0->PODR_b.PODR13 = 0;		// RX LED(P013): High出力(点灯)
+//	R_PORT1->PODR_b.PODR11 = 0;						// SCK LED(P111): High出力(消灯)
+//	R_PORT0->PODR_b.PODR12 = 1;						// TX LED(P012): High出力(消灯)
+//	R_PORT0->PODR_b.PODR13 = 0;						// RX LED(P013): High出力(点灯)
 	R_PORT1->PORR_b.PORR11 = 1;
 	R_PORT0->POSR_b.POSR12 = 1;
 	R_PORT0->PORR_b.PORR13 = 1;
