@@ -87,10 +87,8 @@ void PORT_IRQ0_Handler(void)
 void port_irq0_init(void)
 {
 	/* ---- ベクターテーブル登録 ---- */
-	volatile uint32_t *irq_ptr = (volatile uint32_t *)SCB->VTOR;
-	irq_ptr += BSP_CORTEX_VECTOR_TABLE_ENTRIES;
 	__disable_irq();
-	*(irq_ptr + IRQ_PORT_IRQ0) = (uint32_t)PORT_IRQ0_Handler;
+	NVIC_SetVector((IRQn_Type)IRQ_PORT_IRQ0, (uint32_t)PORT_IRQ0_Handler);
 	__enable_irq();
 
 	/* ---- PORT_IRQ0 無効 ---- */
@@ -140,10 +138,8 @@ void SysTick_Handler(void)
 void sys_timer_init(void)
 {
 	/* ---- ベクターテーブル登録 ---- */
-	volatile uint32_t *irq_ptr = (volatile uint32_t *)SCB->VTOR;
-	irq_ptr += BSP_CORTEX_VECTOR_TABLE_ENTRIES;
 	__disable_irq();
-	*(irq_ptr + SysTick_IRQn) = (uint32_t)SysTick_Handler;
+	NVIC_SetVector(SysTick_IRQn, (uint32_t)SysTick_Handler);
 	__enable_irq();
 
 	/* ---- System Tick Configuration ---- */
