@@ -5,6 +5,9 @@
 // 末尾(31)から割り当てるルールとする。
 #define IRQ_PORT_IRQ0		(31)					// 外部端子割り込み(0)
 
+/* システムタイマー用カウンタ */
+volatile uint32_t u32s_SystemTimeCounter = 0;
+
 /*
  * SCI1 UART 初期化
  * 9600bps / 8bit / No parity / 1stop
@@ -119,6 +122,35 @@ void port_irq0_init(void)
 	NVIC_EnableIRQ((IRQn_Type)IRQ_PORT_IRQ0);
 }
 
+/* SysTick 割り込みハンドラ */
+void SysTick_Handler(void)
+{
+	u32s_SystemTimeCounter++;
+
+	// 割り込みによる1秒周期の確認
+	if (u32s_SystemTimeCounter >= 1000) {
+		u32s_SystemTimeCounter = 0;
+
+		// 1文字送信
+		sci1_putc('t');
+	}
+}
+
+/* System Timer 初期化 */
+void sys_timer_init(void)
+{
+	/* ---- ベクターテーブル登録 ---- */
+	volatile uint32_t *irq_ptr = (volatile uint32_t *)SCB->VTOR;
+	irq_ptr += BSP_CORTEX_VECTOR_TABLE_ENTRIES;
+	__disable_irq();
+	*(irq_ptr + SysTick_IRQn) = (uint32_t)SysTick_Handler;
+	__enable_irq();
+
+	/* ---- System Tick Configuration ---- */
+	// MPUクロック=48MHz → 1tick=1ms に設定
+	SysTick_Config(64000000 / 1000);
+}
+
 void setup() {
 	// 各ポートの方向設定
 	R_PORT1->PDR_b.PDR11 = 1;						// SCK LED(P111): 出力
@@ -130,6 +162,9 @@ void setup() {
 
 	// PORT_IRQ0 初期化
 	port_irq0_init();
+
+	// System Timer 初期化
+	sys_timer_init();
 }
 
 void loop() {
