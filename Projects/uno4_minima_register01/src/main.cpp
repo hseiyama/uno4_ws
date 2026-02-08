@@ -3,10 +3,39 @@
 /* IRQ番号の割り当て */
 // IRQManager との競合を避けるため、
 // 末尾(31)から割り当てるルールとする。
-#define IRQ_PORT_IRQ0		(31)					// 外部端子割り込み(0)
+#define IRQ_PORT_IRQ0		(31)					// 外部端子(IRQ0)割り込み
+#define IRQ_SCI1_RXI		(30)					// UART受信(SCI1)割り込み
+//#define IRQ_SCI1_TXI		(29)					// UART送信(SCI1)割り込み
 
 /* システムタイマー用カウンタ */
 volatile uint32_t u32s_SystemTimeCounter = 0;
+
+//volatile uint8_t u8s_TxData = 0x00;
+
+static void sci1_putc(char c);						// 1文字送信
+static void sci1_puts(const char *s);				// 文字列送信
+static char sci1_getc(void);						// 1文字受信（ブロッキング）
+
+/* SCI1_RXI 割り込みハンドラ */
+void SCI1_RXI_Handler(void)
+{
+    /* 割り込み要求フラグ クリア */
+	R_ICU->IELSR_b[IRQ_SCI1_RXI].IR = 0;
+
+	// 1文字送信
+	sci1_putc(R_SCI1->RDR);
+}
+
+/* SCI1_TXI 割り込みハンドラ */
+//void SCI1_TXI_Handler(void)
+//{
+//    /* 割り込み要求フラグ クリア */
+//	R_ICU->IELSR_b[IRQ_SCI1_TXI].IR = 0;
+//
+//	// 1文字送信
+//	R_SCI1->TDR = u8s_TxData;
+//	R_SCI1->SCR_b.TIE = 0;							// TIE=0
+//}
 
 /*
  * SCI1 UART 初期化
@@ -14,6 +43,17 @@ volatile uint32_t u32s_SystemTimeCounter = 0;
  */
 void sci1_init(void)
 {
+	/* ---- ベクターテーブル登録 ---- */
+	__disable_irq();
+	NVIC_SetVector((IRQn_Type)IRQ_SCI1_RXI, (uint32_t)SCI1_RXI_Handler);
+//	NVIC_SetVector((IRQn_Type)IRQ_SCI1_TXI, (uint32_t)SCI1_TXI_Handler);
+	__enable_irq();
+
+	/* ---- SCI1_RXI 無効 ---- */
+	R_ICU->IELSR[IRQ_SCI1_RXI] = 0x00000000;
+	/* ---- SCI1_TXI 無効 ---- */
+//	R_ICU->IELSR[IRQ_SCI1_TXI] = 0x00000000;
+
 	/* ---- SCI1 モジュールストップ解除 ---- */
 	R_MSTP->MSTPCRB_b.MSTPB30 = 0;					// SCI1 ON
 
@@ -48,18 +88,36 @@ void sci1_init(void)
 	R_BSP_PinAccessDisable();
 
 	/* ---- 送受信有効 ---- */
-	R_SCI1->SCR = 0x30;								// TE=1, RE=1
+	R_SCI1->SCR = 0x70;								// RIE=1, TE=1, RE=1
+
+	/* ---- ICU → NVIC 割り込み割り当て (SCI1_RXI) ---- */
+	R_ICU->IELSR_b[IRQ_SCI1_RXI].IR = 0;			// 割り込み要求フラグ クリア
+	R_ICU->IELSR_b[IRQ_SCI1_RXI].IELS = 0x9E;		// SCI1_RXI
+	/* ---- ICU → NVIC 割り込み割り当て (SCI1_TXI) ---- */
+//	R_ICU->IELSR_b[IRQ_SCI1_TXI].IR = 0;			// 割り込み要求フラグ クリア
+//	R_ICU->IELSR_b[IRQ_SCI1_TXI].IELS = 0x9F;		// SCI1_TXI
+
+	/* ---- NVIC 設定 (SCI1_RXI) ---- */
+	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_SCI1_RXI);
+	NVIC_SetPriority((IRQn_Type)IRQ_SCI1_RXI, 11);	// 優先度 11
+	NVIC_EnableIRQ((IRQn_Type)IRQ_SCI1_RXI);
+	/* ---- NVIC 設定 (SCI1_TXI) ---- */
+//	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_SCI1_TXI);
+//	NVIC_SetPriority((IRQn_Type)IRQ_SCI1_TXI, 11);	// 優先度 11
+//	NVIC_EnableIRQ((IRQn_Type)IRQ_SCI1_TXI);
 }
 
 /* 1文字送信 */
-void sci1_putc(char c)
+static void sci1_putc(char c)
 {
 	while (!R_SCI1->SSR_b.TDRE);
 	R_SCI1->TDR = c;
+//	u8s_TxData = c;
+//	R_SCI1->SCR_b.TIE = 1;							// TIE=1
 }
 
 /* 文字列送信 */
-void sci1_puts(const char *s)
+static void sci1_puts(const char *s)
 {
 	while (*s) {
 	    sci1_putc(*s++);
@@ -67,7 +125,7 @@ void sci1_puts(const char *s)
 }
 
 /* 1文字受信（ブロッキング） */
-char sci1_getc(void)
+static char sci1_getc(void)
 {
 	while (!R_SCI1->SSR_b.RDRF);
 	return R_SCI1->RDR;
