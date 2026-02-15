@@ -1,16 +1,23 @@
-/* Standard C library includes */
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
-#include <math.h>
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : HAL Entry
+  ******************************************************************************
+  */
+
+/* Includes ------------------------------------------------------------------*/
 #include "bsp_api.h"
+#include "main.h"
+#include "drv.h"
+#include "lib.h"
 
-void setup(void);
-void loop(void);
+/* Private typedef -----------------------------------------------------------*/
 
+/* Private define ------------------------------------------------------------*/
 
-/* TODO: make me configurable by the variant */
+/* Private macro -------------------------------------------------------------*/
+
+/* Private variables ---------------------------------------------------------*/
 extern const uint32_t __StackTop;
 const uint32_t APPLICATION_VECTOR_TABLE_ADDRESS_RAM = (uint32_t)&__StackTop;
 
@@ -19,8 +26,40 @@ volatile uint32_t *irq_vector_table;
 extern const fsp_vector_t __VECTOR_TABLE[];
 extern const fsp_vector_t g_vector_table[];
 
+volatile static uint32_t u32s_CycleTimeCounter;		/* 周期時間カウンター			*/
 
-void arduino_main(void)
+/* Private function prototypes -----------------------------------------------*/
+static void arduino_main(void);
+
+/* Exported functions --------------------------------------------------------*/
+
+/**
+  * @brief  SysTickタイマ経過コールバック関数
+  * @param  None
+  * @retval None
+  */
+void SYSTICK_PeriodElapsed_Callback(void)
+{
+	u32s_CycleTimeCounter++;
+}
+
+/**
+  * @brief  hal_entry
+  * @param  None
+  * @retval None
+  */
+void hal_entry(void) {
+	arduino_main();
+}
+
+/* Private functions ---------------------------------------------------------*/
+
+/**
+  * @brief  arduino_main
+  * @param  None
+  * @retval None
+  */
+static void arduino_main(void)
 {
 	R_MPU_SPMON->SP[0].CTL = 0;
 
@@ -39,14 +78,34 @@ void arduino_main(void)
 	__DSB();
 	__enable_irq();
 
+	u32s_CycleTimeCounter = 0;
+	/* タイマー初期化処理 */
+	taskTimerInit();
+	/* UARTドライバー初期化処理 */
+	taskUartDriverInit();
+	/* 初期化関数 */
 	setup();
-	while (1)
-	{
-		loop();
-	}
-}
+	/* SysTickタイマー開始(1msタイマー割り込み用) */
+	LL_SYSTICK_EnableIT();
+	/* Infinite loop */
+	while (true) {
+		/* 周期時間カウンターがシステムの周期時間[ms]に達した場合 */
+		if (u32s_CycleTimeCounter >= SYS_CYCLE_TIME) {
+			/* Disable Interrupts */
+			__disable_irq();
+			u32s_CycleTimeCounter = 0;
+			/* Enable Interrupts */
+			__enable_irq();
 
-void hal_entry(void) {
-	arduino_main();
+			/* タイマー更新処理 */
+			taskTimerUpdate();
+			/* UARTドライバー入力処理 */
+			taskUartDriverInput();
+			/* 周期処理関数 */
+			loop();
+			/* UARTドライバー出力処理 */
+			taskUartDriverOutput();
+		}
+	}
 }
 
