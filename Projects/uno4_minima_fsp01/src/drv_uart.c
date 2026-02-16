@@ -13,8 +13,12 @@
 /* Private typedef -----------------------------------------------------------*/
 
 /* Private define ------------------------------------------------------------*/
-#define TX_QUEUE_SIZE		(64)			/* UART送信Queueサイズ			*/
-#define RX_QUEUE_SIZE		(64)			/* UART受信Queueサイズ			*/
+#define TX_QUEUE_SIZE		(128)			/* UART送信Queueサイズ			*/
+#define RX_QUEUE_SIZE		(128)			/* UART受信Queueサイズ			*/
+
+/* 送信状態 */
+#define TX_STATE_IDLE		(0)				/* 送信アイドル状態				*/
+#define TX_STATE_ACTIVE		(1)				/* 送信アクティブ状態			*/
 
 /* Private macro -------------------------------------------------------------*/
 
@@ -23,6 +27,7 @@ volatile static uint8_t u8s_UartTxBuffer[TX_QUEUE_SIZE];	/* UART送信Queueデ�
 volatile static uint8_t u8s_UartRxBuffer[RX_QUEUE_SIZE];	/* UART受信Queueデータ			*/
 volatile static QueueControl sts_UartTxQueue;				/* UART送信Queue情報			*/
 volatile static QueueControl sts_UartRxQueue;				/* UART受信Queue情報			*/
+volatile static uint8_t u8s_TxState;						/* UART送信状態					*/
 
 /* Private function prototypes -----------------------------------------------*/
 static uint8_t setUartTxQueue(const uint8_t u8_Data);		/* UART送信Queueに登録する				*/
@@ -33,51 +38,49 @@ static uint8_t getUartRxQueue(uint8_t *pu8_Data);			/* UART受信Queueから取�
 /* Exported functions --------------------------------------------------------*/
 
 /**
-  * @brief  USART受信コールバック関数
+  * @brief  SCI1受信データフル割り込みハンドラ
   * @param  None
   * @retval None
   */
-void USART_CharReception_Callback(void)
+void SCI1_RXI_Handler(void)
 {
-	uint8_t u8_RxData;
+	/* 割り込み要求フラグ クリア */
+	R_ICU->IELSR_b[IRQ_SCI1_RXI].IR = 0;
 
-	/* Read Received character. RXNE flag is cleared by reading of RDR register */
-	u8_RxData = LL_USART_ReceiveData8(USART2);
 	/* UART受信Queueに登録する */
-	setUartRxQueue(u8_RxData);
+	setUartRxQueue(R_SCI1->RDR);
 }
 
 /**
-  * @brief  USART送信Enptyコールバック関数
+  * @brief  SCI1送信データエンプティ割り込みハンドラ
   * @param  None
   * @retval None
   */
-void USART_TXEmpty_Callback(void)
+void SCI1_TXI_Handler(void)
 {
 	uint8_t u8_TxData = 0;
 
+	/* 割り込み要求フラグ クリア */
+	R_ICU->IELSR_b[IRQ_SCI1_TXI].IR = 0;
+
 	/* UART送信Queueから取得する */
 	if (getUartTxQueue(&u8_TxData)) {
-		/* Fill TDR with a new char */
-		LL_USART_TransmitData8(USART2, u8_TxData);
-	}
-	else {
-		/* Disable TXE interrupt */
-		LL_USART_DisableIT_TXE(USART2);
-		/* Enable TC interrupt */
-		LL_USART_EnableIT_TC(USART2);
+		R_SCI1->TDR = u8_TxData;
 	}
 }
 
 /**
-  * @brief  USART送信完了コールバック関数
+  * @brief  SCI1送信終了割り込みハンドラ
   * @param  None
   * @retval None
   */
-void USART_CharTransmitComplete_Callback(void)
+void SCI1_TEI_Handler(void)
 {
-	/* Disable TC interrupt */
-	LL_USART_DisableIT_TC(USART2);
+	/* 割り込み要求フラグ クリア */
+	R_ICU->IELSR_b[IRQ_SCI1_TEI].IR = 0;
+
+	/* UART送信状態 (送信アイドル状態) */
+	u8s_TxState = TX_STATE_IDLE;
 }
 
 /**
@@ -91,10 +94,76 @@ void taskUartDriverInit(void)
 	mem_set08((uint8_t *)&u8s_UartRxBuffer[0], 0x00, RX_QUEUE_SIZE);
 	mem_set08((uint8_t *)&sts_UartTxQueue, 0x00, sizeof(sts_UartTxQueue));
 	mem_set08((uint8_t *)&sts_UartRxQueue, 0x00, sizeof(sts_UartRxQueue));
+	u8s_TxState = TX_STATE_IDLE;
 
-	/* Enable RXNE and Error interrupts */
-	LL_USART_EnableIT_RXNE(USART2);
-	LL_USART_EnableIT_ERROR(USART2);
+	/* ---- ベクターテーブル登録 ---- */
+	__disable_irq();
+	NVIC_SetVector((IRQn_Type)IRQ_SCI1_RXI, (uint32_t)SCI1_RXI_Handler);
+	NVIC_SetVector((IRQn_Type)IRQ_SCI1_TXI, (uint32_t)SCI1_TXI_Handler);
+	NVIC_SetVector((IRQn_Type)IRQ_SCI1_TEI, (uint32_t)SCI1_TEI_Handler);
+	__enable_irq();
+
+	/* ---- SCI1_RXI 無効 ---- */
+	R_ICU->IELSR[IRQ_SCI1_RXI] = 0x00000000;
+	/* ---- SCI1_TXI 無効 ---- */
+	R_ICU->IELSR[IRQ_SCI1_TXI] = 0x00000000;
+	/* ---- SCI1_TEI 無効 ---- */
+	R_ICU->IELSR[IRQ_SCI1_TEI] = 0x00000000;
+
+	/* ---- SCI1 モジュールストップ解除 ---- */
+	R_MSTP->MSTPCRB_b.MSTPB30 = 0;					// SCI1 ON
+
+	/* ---- SCI 停止 ---- */
+	R_SCI1->SCR = 0x00;
+
+	/* ---- 通信条件設定 ---- */
+	R_SCI1->SMR = 0x00;								// 8bit, no parity, 1 stop
+	R_SCI1->SCMR = 0xF2;							// 通常モード
+
+	/* ---- ボーレート設定 ---- */
+	// PCLKA = 48MHz
+	// BBR = 48MHz / (64 * 2^(-1) * 9600bps) - 1 = 155.25
+	// 前提条件1 [SMR.CKS=00b (n=0)]
+	// 前提条件2 [SEMR.ABCS=0b, SEMR.ABCSE=0b, SEMR.BGDM=0b]
+	// 9600bps → BRR = 155
+	R_SCI1->BRR = 155;
+
+	/* ---- ポート設定 ---- */
+	// 書き込みプロテクト解除
+	R_BSP_PinAccessEnable();
+	// P501 = TXD1, P502 = RXD1
+	R_PFS->PORT[5].PIN[1].PmnPFS_b.PSEL = 0b00101;	// SCI1 TX
+	R_PFS->PORT[5].PIN[2].PmnPFS_b.PSEL = 0b00101;	// SCI1 RX
+	R_PFS->PORT[5].PIN[1].PmnPFS_b.PMR = 1;
+	R_PFS->PORT[5].PIN[2].PmnPFS_b.PMR = 1;
+	// 書き込みプロテクト施錠
+	R_BSP_PinAccessDisable();
+
+	/* ---- 送受信有効 ---- */
+	R_SCI1->SCR = 0xF2;								// TIE=1, RIE=1, TE=1, RE=1, TEIE =1
+
+	/* ---- ICU → NVIC 割り込み割り当て (SCI1_RXI) ---- */
+	R_ICU->IELSR_b[IRQ_SCI1_RXI].IR = 0;			// 割り込み要求フラグ クリア
+	R_ICU->IELSR_b[IRQ_SCI1_RXI].IELS = 0x9E;		// SCI1_RXI
+	/* ---- ICU → NVIC 割り込み割り当て (SCI1_TXI) ---- */
+	R_ICU->IELSR_b[IRQ_SCI1_TXI].IR = 0;			// 割り込み要求フラグ クリア
+	R_ICU->IELSR_b[IRQ_SCI1_TXI].IELS = 0x9F;		// SCI1_TXI
+	/* ---- ICU → NVIC 割り込み割り当て (SCI1_TEI) ---- */
+	R_ICU->IELSR_b[IRQ_SCI1_TEI].IR = 0;			// 割り込み要求フラグ クリア
+	R_ICU->IELSR_b[IRQ_SCI1_TEI].IELS = 0xA0;		// SCI1_TEI
+
+	/* ---- NVIC 設定 (SCI1_RXI) ---- */
+	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_SCI1_RXI);
+	NVIC_SetPriority((IRQn_Type)IRQ_SCI1_RXI, 11);	// 優先度 11
+	NVIC_EnableIRQ((IRQn_Type)IRQ_SCI1_RXI);
+	/* ---- NVIC 設定 (SCI1_TXI) ---- */
+	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_SCI1_TXI);
+	NVIC_SetPriority((IRQn_Type)IRQ_SCI1_TXI, 11);	// 優先度 11
+	NVIC_EnableIRQ((IRQn_Type)IRQ_SCI1_TXI);
+	/* ---- NVIC 設定 (SCI1_TEI) ---- */
+	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_SCI1_TEI);
+	NVIC_SetPriority((IRQn_Type)IRQ_SCI1_TEI, 11);	// 優先度 11
+	NVIC_EnableIRQ((IRQn_Type)IRQ_SCI1_TEI);
 }
 
 /**
@@ -114,10 +183,15 @@ void taskUartDriverInput(void)
   */
 void taskUartDriverOutput(void)
 {
-	/* UART送信Queueデータが存在し、かつUSART送信Enpty割り込みが無効な場合 */
-	if ((sts_UartTxQueue.u16_count > 0) && !LL_USART_IsEnabledIT_TXE(USART2)) {
-		/* Enable TXE interrupt */
-		LL_USART_EnableIT_TXE(USART2);
+	uint8_t u8_TxData = 0;
+
+	/* UART送信Queueデータが存在し、かつUART送信状態が送信アイドル状態の場合 */
+	if ((sts_UartTxQueue.u16_count > 0) && (u8s_TxState == TX_STATE_IDLE)) {
+		/* UART送信状態 (送信アクティブ状態) */
+		u8s_TxState = TX_STATE_ACTIVE;
+		/* UART送信Queueから取得する */
+		getUartTxQueue(&u8_TxData);
+		R_SCI1->TDR = u8_TxData;
 	}
 }
 

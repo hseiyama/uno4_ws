@@ -6,7 +6,6 @@
   */
 
 /* Includes ------------------------------------------------------------------*/
-#include "bsp_api.h"
 #include "main.h"
 #include "drv.h"
 #include "lib.h"
@@ -34,11 +33,11 @@ static void arduino_main(void);
 /* Exported functions --------------------------------------------------------*/
 
 /**
-  * @brief  SysTickタイマ経過コールバック関数
+  * @brief  SysTickタイマー割り込みハンドラ
   * @param  None
   * @retval None
   */
-void SYSTICK_PeriodElapsed_Callback(void)
+void SysTick_Handler(void)
 {
 	u32s_CycleTimeCounter++;
 }
@@ -85,8 +84,9 @@ static void arduino_main(void)
 	taskUartDriverInit();
 	/* 初期化関数 */
 	setup();
-	/* SysTickタイマー開始(1msタイマー割り込み用) */
-	LL_SYSTICK_EnableIT();
+	/* SysTickタイマー開始 */
+	// MPUクロック=48MHz → 1tick=1ms
+	SysTick_Config(48000000 / 1000);
 	/* Infinite loop */
 	while (true) {
 		/* 周期時間カウンターがシステムの周期時間[ms]に達した場合 */

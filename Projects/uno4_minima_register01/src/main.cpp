@@ -206,7 +206,7 @@ void sys_timer_init(void)
 
 	/* ---- System Tick Configuration ---- */
 	// MPUクロック=48MHz → 1tick=1ms に設定
-	SysTick_Config(64000000 / 1000);
+	SysTick_Config(48000000 / 1000);
 }
 
 void setup() {
