@@ -16,10 +16,6 @@
 #define TX_QUEUE_SIZE		(128)			/* UART送信Queueサイズ			*/
 #define RX_QUEUE_SIZE		(128)			/* UART受信Queueサイズ			*/
 
-/* 送信状態 */
-#define TX_STATE_IDLE		(0)				/* 送信アイドル状態				*/
-#define TX_STATE_ACTIVE		(1)				/* 送信アクティブ状態			*/
-
 /* Private macro -------------------------------------------------------------*/
 
 /* Private variables ---------------------------------------------------------*/
@@ -27,7 +23,6 @@ volatile static uint8_t u8s_UartTxBuffer[TX_QUEUE_SIZE];	/* UART送信Queueデ�
 volatile static uint8_t u8s_UartRxBuffer[RX_QUEUE_SIZE];	/* UART受信Queueデータ			*/
 volatile static QueueControl sts_UartTxQueue;				/* UART送信Queue情報			*/
 volatile static QueueControl sts_UartRxQueue;				/* UART受信Queue情報			*/
-volatile static uint8_t u8s_TxState;						/* UART送信状態					*/
 
 /* Private function prototypes -----------------------------------------------*/
 static uint8_t setUartTxQueue(const uint8_t u8_Data);		/* UART送信Queueに登録する				*/
@@ -70,17 +65,17 @@ void SCI1_TXI_Handler(void)
 }
 
 /**
-  * @brief  SCI1送信終了割り込みハンドラ
+  * @brief  SCI1受信エラー割り込みハンドラ
   * @param  None
   * @retval None
   */
-void SCI1_TEI_Handler(void)
+void SCI1_ERI_Handler(void)
 {
 	/* 割り込み要求フラグ クリア */
-	R_ICU->IELSR_b[IRQ_SCI1_TEI].IR = 0;
+	R_ICU->IELSR_b[IRQ_SCI1_ERI].IR = 0;
 
-	/* UART送信状態 (送信アイドル状態) */
-	u8s_TxState = TX_STATE_IDLE;
+	/* 文字を出力する */
+	uartEchoStr("<SCI1_ERI>");
 }
 
 /**
@@ -94,21 +89,20 @@ void taskUartDriverInit(void)
 	mem_set08((uint8_t *)&u8s_UartRxBuffer[0], 0x00, RX_QUEUE_SIZE);
 	mem_set08((uint8_t *)&sts_UartTxQueue, 0x00, sizeof(sts_UartTxQueue));
 	mem_set08((uint8_t *)&sts_UartRxQueue, 0x00, sizeof(sts_UartRxQueue));
-	u8s_TxState = TX_STATE_IDLE;
 
 	/* ---- ベクターテーブル登録 ---- */
 	__disable_irq();
 	NVIC_SetVector((IRQn_Type)IRQ_SCI1_RXI, (uint32_t)SCI1_RXI_Handler);
 	NVIC_SetVector((IRQn_Type)IRQ_SCI1_TXI, (uint32_t)SCI1_TXI_Handler);
-	NVIC_SetVector((IRQn_Type)IRQ_SCI1_TEI, (uint32_t)SCI1_TEI_Handler);
+	NVIC_SetVector((IRQn_Type)IRQ_SCI1_ERI, (uint32_t)SCI1_ERI_Handler);
 	__enable_irq();
 
 	/* ---- SCI1_RXI 無効 ---- */
 	R_ICU->IELSR[IRQ_SCI1_RXI] = 0x00000000;
 	/* ---- SCI1_TXI 無効 ---- */
 	R_ICU->IELSR[IRQ_SCI1_TXI] = 0x00000000;
-	/* ---- SCI1_TEI 無効 ---- */
-	R_ICU->IELSR[IRQ_SCI1_TEI] = 0x00000000;
+	/* ---- SCI1_ERI 無効 ---- */
+	R_ICU->IELSR[IRQ_SCI1_ERI] = 0x00000000;
 
 	/* ---- SCI1 モジュールストップ解除 ---- */
 	R_MSTP->MSTPCRB_b.MSTPB30 = 0;					// SCI1 ON
@@ -140,7 +134,7 @@ void taskUartDriverInit(void)
 	R_BSP_PinAccessDisable();
 
 	/* ---- 送受信有効 ---- */
-	R_SCI1->SCR = 0xF2;								// TIE=1, RIE=1, TE=1, RE=1, TEIE =1
+	R_SCI1->SCR = 0xF0;								// TIE=1, RIE=1, TE=1, RE=1
 
 	/* ---- ICU → NVIC 割り込み割り当て (SCI1_RXI) ---- */
 	R_ICU->IELSR_b[IRQ_SCI1_RXI].IR = 0;			// 割り込み要求フラグ クリア
@@ -148,9 +142,9 @@ void taskUartDriverInit(void)
 	/* ---- ICU → NVIC 割り込み割り当て (SCI1_TXI) ---- */
 	R_ICU->IELSR_b[IRQ_SCI1_TXI].IR = 0;			// 割り込み要求フラグ クリア
 	R_ICU->IELSR_b[IRQ_SCI1_TXI].IELS = 0x9F;		// SCI1_TXI
-	/* ---- ICU → NVIC 割り込み割り当て (SCI1_TEI) ---- */
-	R_ICU->IELSR_b[IRQ_SCI1_TEI].IR = 0;			// 割り込み要求フラグ クリア
-	R_ICU->IELSR_b[IRQ_SCI1_TEI].IELS = 0xA0;		// SCI1_TEI
+	/* ---- ICU → NVIC 割り込み割り当て (SCI1_ERI) ---- */
+	R_ICU->IELSR_b[IRQ_SCI1_ERI].IR = 0;			// 割り込み要求フラグ クリア
+	R_ICU->IELSR_b[IRQ_SCI1_ERI].IELS = 0xA1;		// SCI1_ERI
 
 	/* ---- NVIC 設定 (SCI1_RXI) ---- */
 	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_SCI1_RXI);
@@ -160,10 +154,10 @@ void taskUartDriverInit(void)
 	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_SCI1_TXI);
 	NVIC_SetPriority((IRQn_Type)IRQ_SCI1_TXI, 11);	// 優先度 11
 	NVIC_EnableIRQ((IRQn_Type)IRQ_SCI1_TXI);
-	/* ---- NVIC 設定 (SCI1_TEI) ---- */
-	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_SCI1_TEI);
-	NVIC_SetPriority((IRQn_Type)IRQ_SCI1_TEI, 11);	// 優先度 11
-	NVIC_EnableIRQ((IRQn_Type)IRQ_SCI1_TEI);
+	/* ---- NVIC 設定 (SCI1_ERI) ---- */
+	NVIC_ClearPendingIRQ((IRQn_Type)IRQ_SCI1_ERI);
+	NVIC_SetPriority((IRQn_Type)IRQ_SCI1_ERI, 11);	// 優先度 11
+	NVIC_EnableIRQ((IRQn_Type)IRQ_SCI1_ERI);
 }
 
 /**
@@ -185,10 +179,8 @@ void taskUartDriverOutput(void)
 {
 	uint8_t u8_TxData = 0;
 
-	/* UART送信Queueデータが存在し、かつUART送信状態が送信アイドル状態の場合 */
-	if ((sts_UartTxQueue.u16_count > 0) && (u8s_TxState == TX_STATE_IDLE)) {
-		/* UART送信状態 (送信アクティブ状態) */
-		u8s_TxState = TX_STATE_ACTIVE;
+	/* UART送信Queueデータが存在し、かつSCI1送信データエンプティの場合 */
+	if ((sts_UartTxQueue.u16_count > 0) && (R_SCI1->SSR_b.TDRE == 1)) {
 		/* UART送信Queueから取得する */
 		getUartTxQueue(&u8_TxData);
 		R_SCI1->TDR = u8_TxData;
