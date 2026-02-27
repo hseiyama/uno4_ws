@@ -107,12 +107,12 @@ void loop(void)
 		/* スリープ(^S) */
 		case UART_CMD_SLEEP:
 			/* SysTickタイマー停止 */
-//			LL_SYSTICK_DisableIT();
+			LL_SYSTICK_DisableIT();
 			/* イベント待機 */
 			__WFE();
 			__WFE();
 			/* SysTickタイマー開始 */
-//			LL_SYSTICK_EnableIT();
+			LL_SYSTICK_EnableIT();
 			/* 文字を出力する */
 			uartEchoStr("<Wakeup!!>");
 			break;

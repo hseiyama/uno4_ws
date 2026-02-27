@@ -42,6 +42,30 @@ extern "C" {
 #define IRQ_PORT_IRQ0		(4)		/* 外部端子割り込み0					*/
 
 /* Exported macro ------------------------------------------------------------*/
+#define SET_BIT(REG, BIT)			((REG) |= (BIT))
+#define CLEAR_BIT(REG, BIT)			((REG) &= ~(BIT))
+
+/* Exported functions --------------------------------------------------------*/
+
+/**
+  * @brief  Enable SysTick exception request
+  * @param  None
+  * @retval None
+  */
+static __inline void LL_SYSTICK_EnableIT(void)
+{
+	SET_BIT(SysTick->CTRL, SysTick_CTRL_TICKINT_Msk);
+}
+
+/**
+  * @brief  Disable SysTick exception request
+  * @param  None
+  * @retval None
+  */
+static __inline void LL_SYSTICK_DisableIT(void)
+{
+	CLEAR_BIT(SysTick->CTRL, SysTick_CTRL_TICKINT_Msk);
+}
 
 /* Exported functions prototypes ---------------------------------------------*/
 
