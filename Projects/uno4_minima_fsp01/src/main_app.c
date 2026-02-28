@@ -158,6 +158,22 @@ void loop(void)
 	}
 }
 
+/**
+  * @brief  エラー処理ハンドラ
+  * @param  None
+  * @retval None
+  */
+void Error_Handler(void)
+{
+	__disable_irq();
+	while (true) {
+		/* SCK LED(P111)を反転出力する */
+		R_PORT1->PODR_b.PODR11 = !R_PORT1->PODR_b.PODR11;
+		/* 100ms待つ */
+		LL_mDelay(100);
+	}
+}
+
 /* Private functions ---------------------------------------------------------*/
 
 /**

@@ -74,8 +74,8 @@ void SCI1_ERI_Handler(void)
 	/* 割り込み要求フラグ クリア */
 	R_ICU->IELSR_b[IRQ_SCI1_ERI].IR = 0;
 
-	/* 文字を出力する */
-	uartEchoStr("<SCI1_ERI>");
+	/* エラー処理ハンドラ */
+	Error_Handler();
 }
 
 /**

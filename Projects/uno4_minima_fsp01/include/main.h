@@ -15,6 +15,7 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "bsp_api.h"
+#include "lld.h"
 
 /* Exported types ------------------------------------------------------------*/
 
@@ -42,43 +43,13 @@ extern "C" {
 #define IRQ_PORT_IRQ0		(4)		/* 外部端子割り込み0					*/
 
 /* Exported macro ------------------------------------------------------------*/
-#define SET_BIT(REG, BIT)			((REG) |= (BIT))
-#define CLEAR_BIT(REG, BIT)			((REG) &= ~(BIT))
-
-/* Exported functions --------------------------------------------------------*/
-
-/**
-  * @brief  Enable SysTick exception request
-  * @param  None
-  * @retval None
-  */
-static __inline void LL_SYSTICK_EnableIT(void)
-{
-	SET_BIT(SysTick->CTRL, SysTick_CTRL_TICKINT_Msk);
-}
-
-/**
-  * @brief  Disable SysTick exception request
-  * @param  None
-  * @retval None
-  */
-static __inline void LL_SYSTICK_DisableIT(void)
-{
-	CLEAR_BIT(SysTick->CTRL, SysTick_CTRL_TICKINT_Msk);
-}
 
 /* Exported functions prototypes ---------------------------------------------*/
-
-/* 割り込み用コールバック関数 */
-extern void SYSTICK_PeriodElapsed_Callback(void);			/* SysTickタイマ経過コールバック関数	*/
-extern void USART_CharReception_Callback(void);				/* USART受信コールバック関数			*/
-extern void USART_TXEmpty_Callback(void);					/* USART送信Enptyコールバック関数		*/
-extern void USART_CharTransmitComplete_Callback(void);		/* USART送信完了コールバック関数		*/
-extern void EXTI12_Rising_Callback(void);					/* EXTI12立ち上がりコールバック関数		*/
 
 /* main_app.c */
 extern void setup(void);									/* 初期化関数							*/
 extern void loop(void);										/* 周期処理関数							*/
+extern void Error_Handler(void);							/* エラー処理ハンドラ					*/
 
 #ifdef __cplusplus
 }
